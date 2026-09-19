@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据分析师工作台</title>
+  <style>
+    :root {
+      --ink: #172522;
+      --muted: #6d7d78;
+      --line: #dce6e1;
+      --paper: #f6f8f5;
+      --panel: #ffffff;
+      --mint: #dfeee7;
+      --green: #1f6d59;
+      --green-dark: #164c40;
+      --coral: #cf674b;
+      --yellow: #f4ead0;
+      --shadow: 0 12px 36px rgba(24, 51, 43, .08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, "Microsoft YaHei", "Noto Sans SC", sans-serif;
+      letter-spacing: 0;
+    }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app-shell { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+    .sidebar {
+      background: #18362f;
+      color: #eef6f1;
+      padding: 26px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 750; font-size: 17px; }
+    .brand-mark {
+      width: 30px; height: 30px; border: 1px solid #95c6b2; display: grid; place-items: center;
+      color: #ccebdd; font-size: 12px; letter-spacing: 0;
+    }
+    .sidebar-label { color: #9fc1b4; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; }
+    .employee-list { display: grid; gap: 8px; }
+    .employee-item {
+      width: 100%; border: 1px solid transparent; background: transparent; color: #e8f2ed;
+      display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; text-align: left;
+      padding: 11px 10px; border-radius: 7px;
+    }
+    .employee-item:hover { background: rgba(255,255,255,.07); }
+    .employee-item.active { background: #2a5b4e; border-color: #5d9885; }
+    .employee-item.disabled { opacity: .48; cursor: default; }
+    .employee-icon {
+      width: 31px; height: 31px; display: grid; place-items: center; background: #d7ebe1;
+      color: #1c5a49; border-radius: 50%; font-weight: 800; font-size: 13px;
+    }
+    .employee-name { font-size: 13px; font-weight: 700; margin-top: 1px; }
+    .employee-desc { color: #a9c8bc; font-size: 11px; margin-top: 5px; line-height: 1.45; }
+    .sidebar-footer { margin-top: auto; color: #9fc1b4; font-size: 11px; line-height: 1.65; border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; }
+    main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar {
+      min-height: 76px; background: var(--panel); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 32px;
+    }
+    .eyebrow { color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    h1 { margin: 5px 0 0; font-size: 22px; letter-spacing: 0; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4d9c7e; }
+    .workspace { width: min(1380px, 100%); margin: 0 auto; padding: 28px 32px 36px; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(380px, .92fr); gap: 22px; flex: 1; }
+    .conversation, .results { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); min-width: 0; }
+    .conversation { display: flex; flex-direction: column; min-height: 660px; }
+    .panel-head { padding: 19px 22px 15px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .panel-title { font-weight: 760; font-size: 14px; }
+    .panel-meta { color: var(--muted); font-size: 11px; }
+    .messages { padding: 22px; display: flex; flex-direction: column; gap: 15px; overflow: auto; flex: 1; max-height: 480px; }
+    .message { max-width: 88%; padding: 13px 15px; line-height: 1.7; font-size: 13px; border-radius: 7px; white-space: pre-wrap; }
+    .message.assistant { background: #eef5f1; align-self: flex-start; }
+    .message.user { background: var(--green); color: white; align-self: flex-end; }
+    .message.warning { background: var(--yellow); color: #604e20; align-self: flex-start; }
+    .message.error { background: #f8e7e2; color: #874331; align-self: flex-start; }
+    .confirm-button { margin-top: 10px; border: 0; background: var(--green); color: white; padding: 8px 12px; border-radius: 5px; font-size: 12px; }
+    .upload-strip { margin: 0 22px; border: 1px dashed #a8c6b8; background: #f7fbf8; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .upload-copy { min-width: 0; }
+    .upload-title { font-weight: 700; font-size: 12px; }
+    .upload-detail { color: var(--muted); font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .upload-button, .send-button, .chip {
+      border: 1px solid var(--green); background: var(--green); color: white; border-radius: 5px;
+      padding: 9px 13px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .upload-button:hover, .send-button:hover, .confirm-button:hover { background: var(--green-dark); }
+    .composer { padding: 17px 22px 21px; border-top: 1px solid var(--line); }
+    .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 11px; }
+    .chip { color: var(--green-dark); background: white; border-color: var(--line); font-weight: 600; }
+    .chip:hover { border-color: var(--green); background: var(--mint); }
+    .compose-row { display: flex; gap: 9px; align-items: flex-end; }
+    textarea { resize: vertical; min-height: 54px; max-height: 130px; flex: 1; border: 1px solid var(--line); background: #fbfdfb; color: var(--ink); padding: 12px; outline: none; border-radius: 5px; line-height: 1.5; font-size: 13px; }
+    textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(31,109,89,.1); }
+    .send-button { height: 54px; min-width: 72px; }
+    .results { min-height: 660px; display: flex; flex-direction: column; }
+    .quality { padding: 17px 21px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; border-bottom: 1px solid var(--line); }
+    .metric { background: #f5f9f6; padding: 11px; }
+    .metric-label { color: var(--muted); font-size: 10px; }
+    .metric-value { font-size: 17px; font-weight: 780; margin-top: 5px; }
+    .quality-note { margin: 15px 21px 0; font-size: 11px; color: var(--muted); line-height: 1.55; }
+    .result-scroll { padding: 18px 21px 25px; overflow: auto; }
+    .result-empty { color: var(--muted); border: 1px dashed var(--line); padding: 25px 18px; line-height: 1.7; font-size: 12px; }
+    .result-block { border-top: 1px solid var(--line); padding: 18px 0 4px; }
+    .result-block:first-child { border-top: 0; padding-top: 0; }
+    .result-heading { font-size: 14px; font-weight: 780; }
+    .result-explanation { color: #52645e; font-size: 12px; line-height: 1.65; margin: 9px 0 14px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 420px; }
+    th, td { border-bottom: 1px solid #e8efeb; padding: 8px 9px; text-align: left; white-space: nowrap; }
+    th { background: #f3f7f4; color: #41564f; font-weight: 750; }
+    tr:last-child td { border-bottom: 0; }
+    .download { margin: 0 21px 20px; display: none; border: 1px solid #cf8a75; color: #a25039; background: #fff8f5; padding: 11px 13px; border-radius: 5px; text-decoration: none; font-size: 12px; font-weight: 750; text-align: center; }
+    .download.visible { display: block; }
+    .quality-issues { margin: 14px 21px 0; display: grid; gap: 6px; }
+    .issue { font-size: 11px; color: #8b4c39; background: #fff3ee; padding: 8px 10px; line-height: 1.45; }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 1fr; }
+      .conversation, .results { min-height: 560px; }
+    }
+    @media (max-width: 700px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { padding: 15px 16px; gap: 15px; }
+      .employee-list { grid-template-columns: repeat(3, 1fr); }
+      .employee-item { grid-template-columns: 1fr; gap: 5px; }
+      .employee-desc, .sidebar-footer { display: none; }
+      .topbar { padding: 15px 18px; }
+      .workspace { padding: 16px 12px 24px; }
+      .messages { max-height: 430px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">DA</div><span>共建工作台</span></div>
+      <div>
+        <div class="sidebar-label">虚拟员工</div>
+        <div class="employee-list" style="margin-top: 12px">
+          <button class="employee-item active" type="button">
+            <span class="employee-icon">数</span>
+            <span><div class="employee-name">数据分析师</div><div class="employee-desc">问卷统计 · SPSS 口径</div></span>
+          </button>
+          <button class="employee-item disabled" type="button" disabled>
+            <span class="employee-icon">定</span>
+            <span><div class="employee-name">定制数据专家</div><div class="employee-desc">按方法生成与校验数据</div></span>
+          </button>
+          <button class="employee-item disabled" type="button" disabled>
+            <span class="employee-icon">职</span>
+            <span><div class="employee-name">职场陪跑顾问</div><div class="employee-desc">简历 · 面试 · 汇报</div></span>
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-footer">当前为数据分析师工作区<br>支持 Excel / CSV 文件</div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><div class="eyebrow">Virtual employee / 01</div><h1>数据分析师</h1></div>
+        <div class="status"><span class="status-dot"></span><span>工作区已就绪</span></div>
+      </header>
+      <div class="workspace">
+        <section class="conversation">
+          <div class="panel-head"><div><div class="panel-title">分析对话</div><div class="panel-meta">先上传数据，再用自然语言说明任务</div></div><div class="panel-meta">11 methods</div></div>
+          <div class="messages" id="messages">
+            <div class="message assistant">你好，我是数据分析师。上传 Excel 或 CSV 后，可以直接说“做信度分析”，也可以指定变量和模型角色。</div>
+          </div>
+          <div class="upload-strip">
+            <div class="upload-copy"><div class="upload-title">当前数据文件</div><div class="upload-detail" id="fileDetail">尚未上传文件</div></div>
+            <label class="upload-button">上传文件<input id="fileInput" type="file" accept=".csv,.xlsx,.xls" hidden></label>
+          </div>
+          <div class="composer">
+            <div class="chips">
+              <button class="chip" type="button" data-prompt="做信度分析，题项是">信度分析</button>
+              <button class="chip" type="button" data-prompt="做效度分析，题项是">效度分析</button>
+              <button class="chip" type="button" data-prompt="做线性回归">线性回归</button>
+              <button class="chip" type="button" data-prompt="对全部题项做描述统计">描述统计</button>
+            </div>
+            <div class="compose-row">
+              <textarea id="prompt" placeholder="例如：做线性回归，因变量是使用意愿，自变量是主观规范、社会支持"></textarea>
+              <button class="send-button" id="sendButton" type="button">分析</button>
+            </div>
+          </div>
+        </section>
+        <section class="results">
+          <div class="panel-head"><div><div class="panel-title">结果工作区</div><div class="panel-meta">质量检查、结构化结果和文字说明</div></div><div class="panel-meta" id="resultStatus">等待文件</div></div>
+          <div class="quality">
+            <div class="metric"><div class="metric-label">数据行数</div><div class="metric-value" id="rowCount">—</div></div>
+            <div class="metric"><div class="metric-label">变量数量</div><div class="metric-value" id="columnCount">—</div></div>
+            <div class="metric"><div class="metric-label">质量状态</div><div class="metric-value" id="qualityState">—</div></div>
+          </div>
+          <div class="quality-note" id="qualityNote">上传文件后，这里会显示解析方式、缺失值和预处理记录。</div>
+          <div class="quality-issues" id="qualityIssues"></div>
+          <a class="download" id="downloadLink" href="#" target="_blank">下载 Word 分析报告</a>
+          <div class="result-scroll" id="resultScroll"><div class="result-empty">分析结果会显示在这里。数据质量有问题时，系统会先停下来告诉你具体位置。</div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+    const sessionId = crypto.randomUUID();
+    let fileId = "";
+    let currentRequirement = "";
+    let pendingRequirement = "";
+    const $ = (id) => document.getElementById(id);
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[char]));
+    }
+    function appendMessage(text, role = "assistant", kind = "") {
+      const node = document.createElement("div");
+      node.className = `message ${role} ${kind}`.trim();
+      node.innerHTML = escapeHtml(text).replace(/\n/g, "<br>");
+      $("messages").appendChild(node);
+      $("messages").scrollTop = $("messages").scrollHeight;
+      return node;
+    }
+    function updateQuality(report) {
+      if (!report) return;
+      $("rowCount").textContent = `${report.original_rows ?? 0}`;
+      $("columnCount").textContent = `${report.original_columns ?? 0}`;
+      $("qualityState").textContent = report.ready_for_analysis ? "可分析" : "需处理";
+      $("qualityState").style.color = report.ready_for_analysis ? "var(--green)" : "var(--coral)";
+      const read = [report.file_type?.toUpperCase(), report.encoding, report.delimiter ? `分隔符 ${report.delimiter}` : ""].filter(Boolean).join(" · ");
+      $("qualityNote").textContent = `${read || "文件"}；自动处理 ${report.changes?.length ?? 0} 项；缺失值 ${Object.values(report.missing_counts || {}).reduce((a,b) => a + b, 0)} 个。`;
+      $("qualityIssues").innerHTML = (report.issues || []).map(issue => `<div class="issue">${escapeHtml(issue.message)}</div>`).join("");
+    }
+    function renderResults(results) {
+      const root = $("resultScroll");
+      if (!results?.length) {
+        root.innerHTML = `<div class="result-empty">当前没有可展示的结果。</div>`;
+        return;
+      }
+      root.innerHTML = results.map(result => {
+        const tables = (result.tables || []).map(table => {
+          const heads = (table.columns || []).map(column => `<th>${escapeHtml(column)}</th>`).join("");
+          const rows = (table.rows || []).map(row => `<tr>${(table.columns || []).map(column => `<td>${escapeHtml(row[column])}</td>`).join("")}</tr>`).join("");
+          return `<div class="table-wrap"><table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        }).join("<div style='height:10px'></div>");
+        return `<article class="result-block"><div class="result-heading">${escapeHtml(result.label)}</div><div class="result-explanation">${escapeHtml(result.interpretation || "")}</div>${tables}</article>`;
+      }).join("");
+    }
+    function addConfirmButton(requirement) {
+      const node = appendMessage("参数已经齐全。确认后开始执行统计分析。", "assistant");
+      const button = document.createElement("button");
+      button.className = "confirm-button";
+      button.textContent = "确认执行";
+      button.onclick = () => executeAnalysis(requirement, node, button);
+      node.appendChild(document.createElement("br"));
+      node.appendChild(button);
+    }
+    async function uploadFile(file) {
+      const body = new FormData();
+      body.append("session_id", sessionId);
+      body.append("file", file);
+      $("resultStatus").textContent = "正在读取";
+      try {
+        const response = await fetch("/api/upload", { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "上传失败");
+        fileId = data.file_id;
+        $("fileDetail").textContent = `${data.filename} · ${data.report.original_rows} 行 × ${data.report.original_columns} 列`;
+        updateQuality(data.report);
+        $("resultStatus").textContent = data.report.ready_for_analysis ? "可分析" : "需处理";
+        appendMessage(`已读取 ${data.filename}。请告诉我想做哪一种分析。`, "assistant");
+      } catch (error) {
+        $("resultStatus").textContent = "读取失败";
+        appendMessage(error.message, "assistant", "error");
+      }
+    }
+    async function planAnalysis(requirement) {
+      if (!fileId) {
+        appendMessage("请先上传 Excel 或 CSV 文件。", "assistant", "warning");
+        return;
+      }
+      appendMessage(requirement, "user");
+      $("resultStatus").textContent = "理解需求";
+      const response = await fetch("/api/plan", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({session_id: sessionId, file_id: fileId, requirement})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "需求解析失败");
+      updateQuality(data.report);
+      if (data.status === "need_clarification") {
+        appendMessage(data.message || "还需要补充参数。", "assistant", "warning");
+        $("resultStatus").textContent = "等待补充";
+      } else if (data.status === "blocked") {
+        appendMessage(data.message, "assistant", "error");
+        $("resultStatus").textContent = "数据阻塞";
+      } else {
+        pendingRequirement = requirement;
+        addConfirmButton(requirement);
+        $("resultStatus").textContent = "待确认";
+      }
+    }
+    async function executeAnalysis(requirement, node, button) {
+      button.disabled = true;
+      button.textContent = "执行中";
+      $("resultStatus").textContent = "计算中";
+      try {
+        const response = await fetch("/api/execute", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({session_id: sessionId, file_id: fileId, requirement})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "分析失败");
+        updateQuality(data.report);
+        renderResults(data.results);
+        $("resultStatus").textContent = data.status === "completed" ? "已完成" : data.status;
+        if (data.download_url) {
+          $("downloadLink").href = data.download_url;
+          $("downloadLink").classList.add("visible");
+        }
+        appendMessage(data.message || "分析已完成。", "assistant");
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "重试执行";
+        $("resultStatus").textContent = "执行失败";
+        appendMessage(error.message, "assistant", "error");
+      }
+    }
+    $("fileInput").addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) uploadFile(file);
+    });
+    $("sendButton").addEventListener("click", async () => {
+      const input = $("prompt");
+      const requirement = input.value.trim();
+      if (!requirement) return;
+      input.value = "";
+      currentRequirement = requirement;
+      try { await planAnalysis(requirement); }
+      catch (error) { appendMessage(error.message, "assistant", "error"); }
+    });
+    document.querySelectorAll("[data-prompt]").forEach((button) => {
+      button.addEventListener("click", () => {
+        $("prompt").value = button.dataset.prompt + " ";
+        $("prompt").focus();
+      });
+    });
+    $("prompt").addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") $("sendButton").click();
+    });
+  </script>
+</body>
+</html>
