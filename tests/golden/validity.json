@@ -1,0 +1,98 @@
+{
+  "display": {
+    "tables": {
+      "validity_table": {
+        "merge_cells": [
+          {
+            "align": "center",
+            "field": "检验项",
+            "merge_consecutive_same_values": true,
+            "vertical_align": "middle"
+          }
+        ],
+        "notes": [
+          "按“检验项”列纵向合并相邻相同单元格。",
+          "“Bartlett球形度检验”三行合并为一个单元格并居中展示。"
+        ],
+        "orientation": "grouped",
+        "title": "KMO检验和Bartlett的检验"
+      }
+    }
+  },
+  "label": "效度分析",
+  "meta": {
+    "analysis_sample_size": 180,
+    "item_count": 12,
+    "items": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "C1",
+      "C2",
+      "C3",
+      "C4"
+    ],
+    "method": "Validity Analysis",
+    "method_key": "validity",
+    "method_label": "效度分析",
+    "method_version": "v517-validation-baseline",
+    "params": {
+      "cols": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "C1",
+        "C2",
+        "C3",
+        "C4"
+      ]
+    },
+    "table_keys": [
+      "validity_table"
+    ]
+  },
+  "method": "validity",
+  "tables": [
+    {
+      "columns": [
+        "检验项",
+        "子项",
+        "值"
+      ],
+      "key": "validity_table",
+      "rows": [
+        {
+          "值": 0.9,
+          "子项": "KMO值",
+          "检验项": "KMO检验"
+        },
+        {
+          "值": 1206.079,
+          "子项": "近似卡方",
+          "检验项": "Bartlett球形度检验"
+        },
+        {
+          "值": 66,
+          "子项": "df",
+          "检验项": "Bartlett球形度检验"
+        },
+        {
+          "值": "<0.001***",
+          "子项": "P",
+          "检验项": "Bartlett球形度检验"
+        }
+      ],
+      "title": "KMO检验和Bartlett的检验"
+    }
+  ]
+}

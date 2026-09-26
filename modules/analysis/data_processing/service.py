@@ -8,6 +8,7 @@ ambiguous changes are reported as blocking issues instead of being guessed.
 from __future__ import annotations
 
 import csv
+import re
 import math
 import os
 from dataclasses import asdict, dataclass, field
@@ -91,13 +92,35 @@ def read_data_file(path: str | os.PathLike[str]) -> tuple[pd.DataFrame, dict[str
     if suffix == ".csv":
         return _read_csv(file_path)
 
+    # 工作簿常常第一张是「填表说明」，真正的数据在后面。此前只读第一张，
+    # 于是说明页被当成全部数据，还报告「可分析」——用户的数据根本没被看到。
     try:
-        data = pd.read_excel(file_path)
+        sheets = pd.read_excel(file_path, sheet_name=None)
     except Exception as exc:
         raise DataProcessingError(f"Excel 文件读取失败：{exc}") from exc
+    if not sheets:
+        raise DataProcessingError("Excel 文件没有可读取的数据表。")
+
+    ranked = sorted(
+        sheets.items(),
+        key=lambda item: (len(item[1]) * max(len(item[1].columns), 1), len(item[1].columns)),
+        reverse=True,
+    )
+    sheet_name, data = ranked[0]
     if data.empty and len(data.columns) == 0:
         raise DataProcessingError("Excel 文件没有可读取的数据表。")
-    return data, {"file_type": suffix[1:], "encoding": None, "delimiter": None}
+
+    meta = {"file_type": suffix[1:], "encoding": None, "delimiter": None}
+    if len(sheets) > 1:
+        # 选了哪张、为什么选它，必须让用户看见，不能默默替他决定。
+        meta["sheet_choice"] = {
+            "selected": str(sheet_name),
+            "all_sheets": [
+                {"name": str(name), "rows": int(len(frame)), "columns": int(len(frame.columns))}
+                for name, frame in sheets.items()
+            ],
+        }
+    return data, meta
 
 
 def prepare_for_analysis(
@@ -126,10 +149,29 @@ def prepare_for_analysis(
             )
         )
 
+    if read_meta.get("sheet_choice"):
+        choice = read_meta["sheet_choice"]
+        listed = "、".join(
+            f"{item['name']}（{item['rows']}行×{item['columns']}列）"
+            for item in choice["all_sheets"]
+        )
+        report.issues.append(
+            QualityIssue(
+                "multiple_sheets",
+                "warning",
+                f"工作簿包含多张表（{listed}），已选择数据量最大的「{choice['selected']}」进行分析。"
+                f"若分析对象不是这张表，请只保留目标表后重新上传。",
+                choice,
+            )
+        )
+
     data = raw.copy(deep=True)
     _normalize_column_names(data, report)
     _normalize_values(data, report)
     _classify_columns(data, report, allow_numeric_text_cast)
+    _check_header_row(data, report)
+    _check_degenerate_columns(data, report)
+    _check_numeric_looking_text(data, report)
 
     report.prepared_rows = int(len(data))
     report.prepared_columns = int(len(data.columns))
@@ -390,3 +432,101 @@ def _classify_columns(
                     },
                 )
             )
+
+
+# ---------------------------------------------------------------------------
+# 静默通过的几类问题
+# ---------------------------------------------------------------------------
+#
+# 这些数据都能被读进来，也都不会让分析崩掉——它们会安安静静地产出一个没有
+# 意义的数。按项目约定「所有变更必须可追溯并向用户展示」，这里一律出具警告：
+# 不替用户做决定，但也不装作没看见。
+
+_THOUSANDS_PATTERN = re.compile(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$")
+_PERCENT_PATTERN = re.compile(r"^-?\d+(\.\d+)?\s*%$")
+_NUMERIC_HEADER_PATTERN = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+def _check_header_row(data: pd.DataFrame, report: DataQualityReport) -> None:
+    """列名整片都是数字，多半是首行数据被当成了表头。"""
+
+    columns = [str(column) for column in data.columns]
+    if not columns:
+        return
+    numeric_like = [c for c in columns if _NUMERIC_HEADER_PATTERN.match(c.strip())]
+    if len(numeric_like) == len(columns):
+        report.issues.append(
+            QualityIssue(
+                "header_row_looks_like_data",
+                "error",
+                "所有列名都是数字，首行很可能是数据而不是表头。"
+                "若直接分析，这一行样本会被当作列名丢失。请补上表头后重新上传。",
+                {"columns": columns},
+            )
+        )
+
+
+def _check_degenerate_columns(data: pd.DataFrame, report: DataQualityReport) -> None:
+    """全空列和常数列：能算，但算出来的数没有意义。"""
+
+    empty, constant = [], []
+    for column in data.columns:
+        series = data[column].dropna()
+        if series.empty:
+            empty.append(str(column))
+        elif series.nunique() == 1:
+            constant.append(str(column))
+
+    if empty:
+        report.issues.append(
+            QualityIssue(
+                "empty_column",
+                "warning",
+                f"以下列没有任何有效值：{'、'.join(empty)}。"
+                f"把它们纳入分析会因为成对剔除把其他变量的样本量一起清零。",
+                {"columns": empty},
+            )
+        )
+    if constant:
+        report.issues.append(
+            QualityIssue(
+                "constant_column",
+                "warning",
+                f"以下列所有取值都相同（方差为 0）：{'、'.join(constant)}。"
+                f"它们无法参与相关、回归、信度等需要变异的分析。",
+                {"columns": constant},
+            )
+        )
+
+
+def _check_numeric_looking_text(data: pd.DataFrame, report: DataQualityReport) -> None:
+    """带千分位或百分号的列：看着是数值，但不能替用户猜。"""
+
+    thousands, percent = [], []
+    for column in data.columns:
+        series = data[column].dropna().astype(str).str.strip()
+        if series.empty:
+            continue
+        if (series.map(lambda v: bool(_THOUSANDS_PATTERN.match(v))).mean()) > 0.8:
+            thousands.append(str(column))
+        elif (series.map(lambda v: bool(_PERCENT_PATTERN.match(v))).mean()) > 0.8:
+            percent.append(str(column))
+
+    suspects = thousands + percent
+    if suspects:
+        hints = []
+        if thousands:
+            hints.append(f"含千分位逗号：{'、'.join(thousands)}")
+        if percent:
+            hints.append(f"含百分号：{'、'.join(percent)}")
+        report.issues.append(
+            QualityIssue(
+                "numeric_looking_text",
+                "warning",
+                f"以下列看起来是数值但含有格式符号（{'；'.join(hints)}），"
+                f"已按分类变量处理，未自动转换。"
+                f"自动转换需要替你判断量纲（例如 22% 是 22 还是 0.22），"
+                f"请在源文件中改为纯数字后重新上传。",
+                {"thousands_separator": thousands, "percent_sign": percent},
+            )
+        )

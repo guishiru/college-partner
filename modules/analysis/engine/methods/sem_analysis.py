@@ -27,6 +27,9 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from ._numeric import NA, as_float, numeric_display, significance_star
+
+
 try:
     from semopy import Model
     from semopy.stats import calc_stats
@@ -35,16 +38,9 @@ except ImportError:
 
 
 def _sig_star(p):
-    if p is None or (isinstance(p, float) and np.isnan(p)):
-        return ''
-    p = float(p)
-    if p < 0.001:
-        return '***'
-    if p < 0.01:
-        return '**'
-    if p < 0.05:
-        return '*'
-    return ''
+    """显著性星号统一由 _numeric.significance_star 定义，见那里的口径说明。"""
+
+    return significance_star(p)
 
 
 def _fmt_p(p):
@@ -215,9 +211,12 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
                 '变量': alias_to_item.get(item, item),
                 '非标准化载荷系数': _normalize_display_number(unstd),
                 '标准化载荷系数': _normalize_std_loading(std),
-                'z': '-' if is_anchor or z_val is None else _normalize_display_number(z_val),
-                'S.E.': '-' if is_anchor or se_val is None else _normalize_display_number(se_val),
-                'P': '-' if is_anchor or p_val is None else _fmt_p_star(p_val),
+                # 参考题项的载荷是固定的，没有标准误和检验统计量。存 NaN 而不是
+                # '-'：占位字符串会把整列拖成文本，真数值也跟着变字符串。
+                'z': NA if (is_anchor or z_val is None) else as_float(z_val),
+                'S.E.': NA if (is_anchor or se_val is None) else as_float(se_val),
+                'P值': NA if (is_anchor or p_val is None) else as_float(p_val),
+                '显著性': '' if (is_anchor or p_val is None) else _sig_star(p_val),
                 '是否参考题项': '是' if is_anchor else '否'
             })
     measurement_table = pd.DataFrame(measurement_rows)
@@ -254,6 +253,26 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
 
         ratio = chi2_val / df_val if (chi2_val is not None and df_val is not None and df_val > 0) else None
 
+        # 参考标准和模型结果是两类东西，塞在同一张表里会把每一列都变成字符串，
+        # RMSEA、CFI 这些报告必写的指标因此一个都取不到数值。这里另出一张长表：
+        # 一行一个指标，值是数值，参考标准是文本。宽表保留供展示。
+        _fit_values = {
+            'χ²': as_float(chi2_val), 'df': as_float(df_val),
+            'P': as_float(chi2_p), '卡方自由度比': as_float(ratio),
+            'GFI': as_float(gfi), 'RMSEA': as_float(rmsea), 'RMR': as_float(rmr),
+            'CFI': as_float(cfi), 'NFI': as_float(nfi), 'NNFI': as_float(nnfi),
+        }
+        _fit_standards = {
+            'χ²': '', 'df': '', 'P': '>0.05', '卡方自由度比': '<3', 'GFI': '>0.9',
+            'RMSEA': '<0.10', 'RMR': '<0.05', 'CFI': '>0.9', 'NFI': '>0.9',
+            'NNFI': '>0.9',
+        }
+        fit_index_table = pd.DataFrame(
+            [{'指标': k, '值': v, '参考标准': _fit_standards[k]}
+             for k, v in _fit_values.items()],
+            columns=['指标', '值', '参考标准'],
+        )
+
         fit_table = pd.DataFrame([
             {
                 'χ²': '-', 'df': '-', 'P': '>0.05',
@@ -276,6 +295,7 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
         ], index=['参考标准', '模型结果'])
     except Exception as e:
         fit_table = pd.DataFrame([{'错误': str(e)}])
+        fit_index_table = pd.DataFrame(columns=['指标', '值', '参考标准'])
 
     # ── 预计算所有潜变量的 implied total variance ──────────────────────────
     # 按拓扑顺序（先处理外生变量，再处理内生变量）计算每个潜变量的 implied 方差。
@@ -369,7 +389,8 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
             '标准化系数': _normalize_std_path(std),
             '标准误': _normalize_display_number(se_val),
             'Z': _normalize_display_number(z_val),
-            'P': _fmt_p_star(p_val) if p_val is not None else '-',
+            'P值': as_float(p_val),
+            '显著性': _sig_star(p_val) if p_val is not None else '',
         })
     path_table = pd.DataFrame(path_rows)
 
@@ -382,11 +403,12 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
         'factors': factors,
         'paths': paths,
         'model_desc': model_desc,
-        'table_keys': ['measurement_table', 'path_table', 'fit_table']
+        'table_keys': ['measurement_table', 'path_table', 'fit_index_table', 'fit_table']
     }
 
     tables = {
         'measurement_table': measurement_table,
+        'fit_index_table': fit_index_table,
         'fit_table': fit_table,
         'path_table': path_table,
     }
@@ -395,11 +417,19 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
         'tables': {
             'measurement_table': {
                 'title': '因子载荷系数表',
+                **numeric_display(na_text='-', combine={'P值': '显著性'}),
                 'merge_cells': [
                     {'field': '因子', 'merge_consecutive_same_values': True}
                 ],
                 'orientation': 'grouped',
                 'notes': ['按“因子”列纵向合并相邻相同单元格。', '可隐藏“是否参考题项”列，仅在程序消费时保留。']
+            },
+            'fit_index_table': {
+                'title': '模型拟合指标（结构化）',
+                'merge_cells': [],
+                'orientation': 'wide',
+                **numeric_display(na_text='-'),
+                'notes': ['一行一个指标，值为完整精度数值，供报告和二次计算使用。']
             },
             'fit_table': {
                 'title': '模型拟合指标表',
@@ -409,6 +439,7 @@ def run_sem(data: pd.DataFrame, factors: dict, paths: list) -> dict:
             },
             'path_table': {
                 'title': '结构路径系数表',
+                **numeric_display(na_text='-', combine={'P值': '显著性'}),
                 'merge_cells': [],
                 'orientation': 'wide',
                 'notes': ['普通宽表，无需合并单元格。']

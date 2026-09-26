@@ -1,5 +1,15 @@
 """Deterministic statistical analysis engine."""
 
-from .engine import AnalysisEngine, AnalysisEngineError, AnalysisInputError
+from .engine import (
+    AnalysisDependencyError,
+    AnalysisEngine,
+    AnalysisEngineError,
+    AnalysisInputError,
+)
 
-__all__ = ["AnalysisEngine", "AnalysisEngineError", "AnalysisInputError"]
+__all__ = [
+    "AnalysisDependencyError",
+    "AnalysisEngine",
+    "AnalysisEngineError",
+    "AnalysisInputError",
+]

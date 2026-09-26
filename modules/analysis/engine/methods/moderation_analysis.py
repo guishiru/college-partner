@@ -8,6 +8,7 @@ moderation_analysis.py
 
 快速调用示例：
     import pandas as pd
+
     from moderation_analysis import moderation_analysis
 
     df = pd.read_excel('your_data.xlsx')
@@ -34,6 +35,8 @@ import warnings
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+from ._numeric import NA, numeric_display, significance_star
 
 warnings.filterwarnings('ignore')
 
@@ -249,31 +252,38 @@ def moderation_analysis(data, x, y, m, controls=None, seed=42):
 
     # ── 汇总表 ──────────────────────────────────────
     def _star(p):
-        if np.isnan(p): return ''
-        return '***' if p < 0.001 else ('**' if p < 0.01 else ('*' if p < 0.05 else ''))
+        return significance_star(p)
+
+
+    # F 值曾经被写成 'F(3, 176)=35.378' 这样的字符串，自由度和统计量粘在一起，
+    # p 值还被 round 到四位并接上星号。报告模块拿不到可用的数，这里全部拆成数值列：
+    # 统计量、两个自由度、p 值各自成列，星号是标记单独一列。
+    def _model_row(label, model, r2_change, f_change, p_change, dfn, dfd):
+        f_value = float(model.fvalue)
+        p_value = float(model.f_pvalue)
+        return {
+            '模型': label,
+            'R²': float(model.rsquared),
+            '调整R²': float(model.rsquared_adj),
+            'F': f_value,
+            '模型自由度': int(model.df_model),
+            '残差自由度': int(model.df_resid),
+            'P值': p_value,
+            '显著性': _star(p_value),
+            '△R²': float(r2_change),
+            '△F': float(f_change),
+            '△F分子自由度': int(dfn) if dfn == dfn else NA,
+            '△F分母自由度': int(dfd) if dfd == dfd else NA,
+            '△P值': float(p_change),
+            '△显著性': _star(p_change),
+        }
 
     summary_rows = [
-        {'模型': '模型1',  'R²': round(model1.rsquared,  4),
-         '调整R²': round(model1.rsquared_adj,  4),
-         'F': f'F({dfn1}, {dfd1})={round(f1, 3)}',
-         'P': f'{round(p1, 4)}{_star(p1)}' if not np.isnan(p1) else 'NaN',
-         '△R²': round(model1.rsquared, 4),
-         '△F': f'△F({dfn1}, {dfd1})={round(f1, 3)}',
-         '△P': f'{round(p1, 4)}{_star(p1)}' if not np.isnan(p1) else 'NaN'},
-        {'模型': '模型1b', 'R²': round(model1b.rsquared, 4),
-         '调整R²': round(model1b.rsquared_adj, 4),
-         'F': f'F({int(model1b.df_model)}, {int(model1b.df_resid)})={round(model1b.fvalue, 3)}',
-         'P': f'{round(float(model1b.f_pvalue), 4)}{_star(float(model1b.f_pvalue))}',
-         '△R²': round(model1b.rsquared - model1.rsquared, 4),
-         '△F': f'△F({dfn1b}, {dfd1b})={round(f1b, 3)}' if not np.isnan(f1b) else 'NaN',
-         '△P': f'{round(p1b, 4)}{_star(p1b)}' if not np.isnan(p1b) else 'NaN'},
-        {'模型': '模型2',  'R²': round(model2.rsquared,  4),
-         '调整R²': round(model2.rsquared_adj,  4),
-         'F': f'F({int(model2.df_model)}, {int(model2.df_resid)})={round(model2.fvalue, 3)}',
-         'P': f'{round(float(model2.f_pvalue), 4)}{_star(float(model2.f_pvalue))}',
-         '△R²': round(model2.rsquared - model1b.rsquared, 4),
-         '△F': f'△F({dfn2}, {dfd2})={round(f2, 3)}' if not np.isnan(f2) else 'NaN',
-         '△P': f'{round(p2, 4)}{_star(p2)}' if not np.isnan(p2) else 'NaN'},
+        _model_row('模型1', model1, model1.rsquared, f1, p1, dfn1, dfd1),
+        _model_row('模型1b', model1b,
+                   model1b.rsquared - model1.rsquared, f1b, p1b, dfn1b, dfd1b),
+        _model_row('模型2', model2,
+                   model2.rsquared - model1b.rsquared, f2, p2, dfn2, dfd2),
     ]
 
     summary_df = pd.DataFrame(summary_rows)

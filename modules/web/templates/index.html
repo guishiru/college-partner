@@ -82,6 +82,7 @@
     .message.warning { background: var(--yellow); color: #604e20; align-self: flex-start; }
     .message.error { background: #f8e7e2; color: #874331; align-self: flex-start; }
     .confirm-button { margin-top: 10px; border: 0; background: var(--green); color: white; padding: 8px 12px; border-radius: 5px; font-size: 12px; }
+    .doc-confirm { margin-top: 10px; border: 0; background: var(--green); color: white; padding: 8px 12px; border-radius: 5px; font-size: 12px; }
     .upload-strip { margin: 0 22px; border: 1px dashed #a8c6b8; background: #f7fbf8; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .upload-copy { min-width: 0; }
     .upload-title { font-weight: 700; font-size: 12px; }
@@ -105,6 +106,33 @@
     .metric-label { color: var(--muted); font-size: 10px; }
     .metric-value { font-size: 17px; font-weight: 780; margin-top: 5px; }
     .quality-note { margin: 15px 21px 0; font-size: 11px; color: var(--muted); line-height: 1.55; }
+    .history { margin: 14px 21px 0; }
+    .history-label { font-size: 10px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+    .history-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .history-item { border: 1px solid var(--line); background: #f5f9f6; padding: 6px 10px; font: inherit; font-size: 11px; color: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item:hover { border-color: var(--green); }
+    .history-item.active { background: #2a5b4e; border-color: #5d9885; color: #fff; }
+    .document { min-height: 660px; display: none; flex-direction: column; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); min-width: 0; }
+    .doc-scroll { padding: 16px 21px 24px; overflow: auto; }
+    .doc-empty { color: var(--muted); border: 1px dashed var(--line); padding: 25px 18px; line-height: 1.7; font-size: 12px; }
+    .doc-stage { margin-bottom: 18px; }
+    .doc-stage-label { font-size: 10px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 7px; }
+    .doc-body { white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 12px; line-height: 1.75; background: #f5f9f6; padding: 14px 16px; margin: 0 0 10px; border: 1px solid var(--line); }
+    .finding { font-size: 11px; line-height: 1.6; padding: 8px 11px; margin-bottom: 6px; border-left: 3px solid var(--line); background: #f5f9f6; }
+    .finding.error { border-left-color: var(--coral); }
+    .finding.warning { border-left-color: #c79a2e; }
+    .finding.info { border-left-color: var(--green); }
+    .finding-code { color: var(--muted); font-size: 10px; }
+    /* 文档型员工：右栏放正在起草的文档，而不是统计结果 */
+    .workspace[data-layout="document_split"] .results { display: none; }
+    .workspace[data-layout="document_split"] .document { display: flex; }
+    .workspace[data-layout="document_split"] .upload-strip { display: none; }
+    /* 统计分析的快捷词对文档型员工没有意义。用 CSS 而不是 hidden 属性：
+       .chips 自带 display:flex，会盖过 [hidden] 的 display:none。 */
+    .workspace[data-layout="document_split"] .chips { display: none; }
+    /* 布局是虚拟员工的属性：不需要第二栏的员工，工作区就只有对话。 */
+    .workspace[data-layout="conversation"] { grid-template-columns: minmax(0, 1fr); }
+    .workspace[data-layout="conversation"] .results { display: none; }
     .result-scroll { padding: 18px 21px 25px; overflow: auto; }
     .result-empty { color: var(--muted); border: 1px dashed var(--line); padding: 25px 18px; line-height: 1.7; font-size: 12px; }
     .result-block { border-top: 1px solid var(--line); padding: 18px 0 4px; }
@@ -142,33 +170,29 @@
       <div class="brand"><div class="brand-mark">DA</div><span>共建工作台</span></div>
       <div>
         <div class="sidebar-label">虚拟员工</div>
-        <div class="employee-list" style="margin-top: 12px">
-          <button class="employee-item active" type="button">
-            <span class="employee-icon">数</span>
-            <span><div class="employee-name">数据分析师</div><div class="employee-desc">问卷统计 · SPSS 口径</div></span>
-          </button>
-          <button class="employee-item disabled" type="button" disabled>
-            <span class="employee-icon">定</span>
-            <span><div class="employee-name">定制数据专家</div><div class="employee-desc">按方法生成与校验数据</div></span>
-          </button>
-          <button class="employee-item disabled" type="button" disabled>
-            <span class="employee-icon">职</span>
-            <span><div class="employee-name">职场陪跑顾问</div><div class="employee-desc">简历 · 面试 · 汇报</div></span>
-          </button>
-        </div>
+        <!-- 侧栏由 /api/employees 渲染：员工清单和每个员工的工作区布局都来自后端。 -->
+        <div class="employee-list" id="employeeList" style="margin-top: 12px"></div>
       </div>
-      <div class="sidebar-footer">当前为数据分析师工作区<br>支持 Excel / CSV 文件</div>
+      <div class="sidebar-footer" id="sidebarFooter">当前为数据分析师工作区<br>支持 Excel / CSV 文件</div>
     </aside>
     <main>
       <header class="topbar">
-        <div><div class="eyebrow">Virtual employee / 01</div><h1>数据分析师</h1></div>
-        <div class="status"><span class="status-dot"></span><span>工作区已就绪</span></div>
+        <div><div class="eyebrow">Virtual employee / 01</div><h1 id="employeeTitle">数据分析师</h1></div>
+        <div class="status" style="gap:8px;align-items:center">
+          <input id="tokenInput" type="password" placeholder="粘贴访问令牌"
+                 style="padding:6px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;font:inherit;width:190px">
+          <button id="connectButton" type="button"
+                  style="padding:6px 14px;border-radius:8px;border:1px solid rgba(128,128,128,.35);background:transparent;color:inherit;font:inherit;cursor:pointer">进入工作区</button>
+          <span class="status-dot" id="authDot" style="background:var(--coral)"></span>
+          <span id="authState">未登录</span>
+        </div>
       </header>
-      <div class="workspace">
+      <!-- data-layout 来自当前虚拟员工，决定要不要第二栏。 -->
+      <div class="workspace" id="workspace" data-layout="analysis_split">
         <section class="conversation">
-          <div class="panel-head"><div><div class="panel-title">分析对话</div><div class="panel-meta">先上传数据，再用自然语言说明任务</div></div><div class="panel-meta">11 methods</div></div>
+          <div class="panel-head"><div><div class="panel-title" id="convTitle">对话</div><div class="panel-meta" id="convHint">说明你要做什么</div></div><div class="panel-meta" id="convBadge"></div></div>
           <div class="messages" id="messages">
-            <div class="message assistant">你好，我是数据分析师。上传 Excel 或 CSV 后，可以直接说“做信度分析”，也可以指定变量和模型角色。</div>
+            <div class="message assistant" id="welcome">选择左侧的虚拟员工，粘贴访问令牌后开始。</div>
           </div>
           <div class="upload-strip">
             <div class="upload-copy"><div class="upload-title">当前数据文件</div><div class="upload-detail" id="fileDetail">尚未上传文件</div></div>
@@ -187,6 +211,26 @@
             </div>
           </div>
         </section>
+        <!-- 写作类员工的右栏：正在起草的文档 -->
+        <section class="document">
+          <div class="panel-head"><div><div class="panel-title">文档工作区</div><div class="panel-meta">骨架确认后成稿，交付前自动过校验</div></div><div class="panel-meta" id="docStatus">等待需求</div></div>
+          <div class="doc-scroll">
+            <div class="doc-empty" id="docEmpty">说明你要写什么，我先出骨架，你确认后再展开成稿。</div>
+            <div class="doc-stage" id="docSkeleton" hidden>
+              <div class="doc-stage-label">骨架 · 待确认</div>
+              <pre class="doc-body" id="docSkeletonBody"></pre>
+              <button class="doc-confirm" id="confirmSkeleton" type="button">确认骨架，展开成稿</button>
+            </div>
+            <div class="doc-stage" id="docDraft" hidden>
+              <div class="doc-stage-label">成稿</div>
+              <pre class="doc-body" id="docDraftBody"></pre>
+            </div>
+            <div class="doc-stage" id="docFindings" hidden>
+              <div class="doc-stage-label">交付前校验</div>
+              <div id="docFindingsBody"></div>
+            </div>
+          </div>
+        </section>
         <section class="results">
           <div class="panel-head"><div><div class="panel-title">结果工作区</div><div class="panel-meta">质量检查、结构化结果和文字说明</div></div><div class="panel-meta" id="resultStatus">等待文件</div></div>
           <div class="quality">
@@ -196,6 +240,11 @@
           </div>
           <div class="quality-note" id="qualityNote">上传文件后，这里会显示解析方式、缺失值和预处理记录。</div>
           <div class="quality-issues" id="qualityIssues"></div>
+          <!-- 本次会话的分析历史。结果和报告都在服务端存着，这里是把它们找回来的入口。 -->
+          <div class="history" id="history" hidden>
+            <div class="history-label">本次会话的分析</div>
+            <div class="history-items" id="historyItems"></div>
+          </div>
           <a class="download" id="downloadLink" href="#" target="_blank">下载 Word 分析报告</a>
           <div class="result-scroll" id="resultScroll"><div class="result-empty">分析结果会显示在这里。数据质量有问题时，系统会先停下来告诉你具体位置。</div></div>
         </section>
@@ -203,11 +252,93 @@
     </main>
   </div>
   <script>
-    const sessionId = crypto.randomUUID();
+    // 会话不再由前端生成：进入工作区时由服务端创建并绑定到当前用户。
+    let authToken = "";
+    let sessionId = "";
     let fileId = "";
     let currentRequirement = "";
     let pendingRequirement = "";
+    let downloadUrl = "";
+    let employees = [];
+    let currentEmployee = null;
+    let history = [];          // 本次会话已完成的分析，最新在前
+    let activeJobId = "";
     const $ = (id) => document.getElementById(id);
+
+    function authHeaders(extra = {}) {
+      return authToken ? {...extra, "Authorization": `Bearer ${authToken}`} : {...extra};
+    }
+    function requireSession() {
+      if (!sessionId) throw new Error("请先粘贴访问令牌并进入工作区。");
+    }
+    // 员工清单和布局都来自后端，前端不再硬编码有哪些员工、工作区长什么样。
+    async function loadEmployees() {
+      const response = await fetch("/api/employees");
+      const data = await response.json();
+      employees = data.employees || [];
+      const selected = currentEmployee?.employee_id
+        || employees.find(item => item.available)?.employee_id;
+      $("employeeList").innerHTML = employees.map(item => `
+        <button class="employee-item ${item.employee_id === selected ? "active" : ""} ${item.available ? "" : "disabled"}"
+                type="button" data-employee="${escapeHtml(item.employee_id)}" ${item.available ? "" : "disabled"}>
+          <span class="employee-icon">${escapeHtml(item.badge)}</span>
+          <span><div class="employee-name">${escapeHtml(item.name)}</div><div class="employee-desc">${escapeHtml(item.description)}</div></span>
+        </button>`).join("");
+      applyEmployee(employees.find(item => item.employee_id === selected) || null);
+    }
+    function applyEmployee(employee) {
+      currentEmployee = employee;
+      if (!employee) return;
+      const writing = employee.layout === "document_split";
+      // 对话栏的标题、提示和欢迎语同样是员工的属性，不能写死成数据分析师的。
+      $("convTitle").textContent = writing ? "撰写对话" : "分析对话";
+      $("convHint").textContent = writing
+        ? "先出骨架，你确认后再展开成稿"
+        : "先上传数据，再用自然语言说明任务";
+      $("convBadge").textContent = writing ? "写 / 审 / 改" : "11 methods";
+      if ($("welcome")) {
+        $("welcome").textContent = writing
+          ? `你好，我是${employee.name}。说明要写什么、给谁看、希望对方做什么决定，我先出骨架。`
+          : `你好，我是${employee.name}。上传 Excel 或 CSV 后，可以直接说「做信度分析」，也可以指定变量和模型角色。`;
+      }
+      $("prompt").placeholder = writing
+        ? "说明要写什么：给谁看、要他做什么决定、手上有哪些材料"
+        : "例如：做线性回归，因变量是使用意愿，自变量是主观规范、社会支持";
+      $("workspace").dataset.layout = employee.layout;
+      $("employeeTitle").textContent = employee.name;
+      $("sidebarFooter").innerHTML = `当前为${escapeHtml(employee.name)}工作区<br>${escapeHtml(employee.description)}`;
+    }
+    async function connect() {
+      const token = $("tokenInput").value.trim();
+      if (!token) { appendMessage("请先粘贴管理员签发的访问令牌。", "assistant", "warning"); return; }
+      authToken = token;
+      try {
+        const response = await fetch("/api/sessions", {
+          method: "POST",
+          headers: authHeaders({"Content-Type": "application/json"}),
+          body: JSON.stringify({title: "数据分析会话", employee: currentEmployee?.employee_id})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "进入工作区失败");
+        sessionId = data.session_id;
+        if (data.employee) applyEmployee(data.employee);
+        $("authDot").style.background = "var(--green)";
+        $("authState").textContent = data.username;
+        $("tokenInput").disabled = true;
+        $("connectButton").disabled = true;
+        appendMessage(
+          currentEmployee?.layout === "document_split"
+            ? `已进入工作区，当前用户 ${data.username}。说明你要写什么，我先出骨架。`
+            : `已进入工作区，当前用户 ${data.username}。请上传 Excel 或 CSV 文件。`,
+          "assistant");
+      } catch (error) {
+        authToken = "";
+        sessionId = "";
+        $("authDot").style.background = "var(--coral)";
+        $("authState").textContent = "未登录";
+        appendMessage(error.message, "assistant", "error");
+      }
+    }
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -247,6 +378,108 @@
         return `<article class="result-block"><div class="result-heading">${escapeHtml(result.label)}</div><div class="result-explanation">${escapeHtml(result.interpretation || "")}</div>${tables}</article>`;
       }).join("");
     }
+    // 之前几次分析的结果和报告都在服务端存着，这里把它们重新挂回界面上。
+    function renderHistory() {
+      $("history").hidden = history.length === 0;
+      $("historyItems").innerHTML = history.map(item => `
+        <button class="history-item ${item.job_id === activeJobId ? "active" : ""}"
+                type="button" data-job="${escapeHtml(item.job_id)}" title="${escapeHtml(item.requirement)}">
+          ${escapeHtml(item.requirement)}
+        </button>`).join("");
+    }
+    function rememberAnalysis(jobId, requirement, data) {
+      if (!history.some(item => item.job_id === jobId)) {
+        history.unshift({job_id: jobId, requirement});
+      }
+      activeJobId = jobId;
+      showAnalysis(data);
+      renderHistory();
+    }
+    function showAnalysis(data) {
+      updateQuality(data.report);
+      renderResults(data.results);
+      $("resultStatus").textContent = data.status === "completed" ? "已完成" : data.status;
+      downloadUrl = data.download_url || "";
+      $("downloadLink").classList.toggle("visible", Boolean(downloadUrl));
+    }
+    async function openHistoryItem(jobId) {
+      const response = await fetch(`/api/jobs/${sessionId}/${jobId}/result`, {headers: authHeaders()});
+      const data = await response.json();
+      if (!response.ok) { appendMessage(data.error || "结果回看失败", "assistant", "error"); return; }
+      activeJobId = jobId;
+      showAnalysis(data);
+      renderHistory();
+      const item = history.find(entry => entry.job_id === jobId);
+      appendMessage(`已切回之前的分析：${item ? item.requirement : jobId}`, "assistant");
+    }
+    // ── 写作类员工 ────────────────────────────────────────────────
+    let lastBrief = "";
+    let lastSkeleton = "";
+
+    function isWritingEmployee() {
+      return currentEmployee?.layout === "document_split";
+    }
+    function renderFindings(findings) {
+      const root = $("docFindings");
+      if (!findings?.length) { root.hidden = true; return; }
+      root.hidden = false;
+      $("docFindingsBody").innerHTML = findings.map(f => `
+        <div class="finding ${escapeHtml(f.severity)}">
+          <div>${escapeHtml(f.message)}</div>
+          <div class="finding-code">${escapeHtml(f.code)}${f.location ? " · " + escapeHtml(f.location) : ""}</div>
+        </div>`).join("");
+    }
+    async function requestSkeleton(brief) {
+      requireSession();
+      lastBrief = brief;
+      appendMessage(brief, "user");
+      $("docStatus").textContent = "正在出骨架";
+      const response = await fetch("/api/documents/skeleton", {
+        method: "POST", headers: authHeaders({"Content-Type": "application/json"}),
+        body: JSON.stringify({session_id: sessionId, brief})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "出骨架失败");
+      if (data.failed) { $("docStatus").textContent = "未完成"; appendMessage(data.failed, "assistant", "error"); return; }
+
+      lastSkeleton = data.text;
+      $("docEmpty").hidden = true;
+      $("docSkeleton").hidden = false;
+      $("docSkeletonBody").textContent = data.text;
+      $("docDraft").hidden = true;
+      $("docFindings").hidden = true;
+      $("docStatus").textContent = "骨架待确认";
+      appendMessage("骨架已出，请在右侧确认。特别看一下「不做」那几条——返工几乎都来自这里。", "assistant");
+    }
+    async function requestDraft() {
+      const button = $("confirmSkeleton");
+      button.disabled = true; button.textContent = "成稿中";
+      $("docStatus").textContent = "成稿中";
+      try {
+        const response = await fetch("/api/documents/draft", {
+          method: "POST", headers: authHeaders({"Content-Type": "application/json"}),
+          body: JSON.stringify({session_id: sessionId, brief: lastBrief, skeleton: lastSkeleton})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "成稿失败");
+        if (data.failed) throw new Error(data.failed);
+
+        $("docDraft").hidden = false;
+        $("docDraftBody").textContent = data.text;
+        renderFindings(data.findings);
+        $("docStatus").textContent = data.ready_to_deliver ? "可交付" : "待修改";
+        const note = data.ready_to_deliver
+          ? "成稿已通过交付前校验。"
+          : `成稿已出，但还有 ${data.findings.filter(f => f.severity === "error").length} 处问题没解决，已列在右侧。`;
+        appendMessage(note + (data.rewrites ? `（自动重写 ${data.rewrites} 次）` : ""), "assistant");
+      } catch (error) {
+        $("docStatus").textContent = "成稿失败";
+        appendMessage(error.message, "assistant", "error");
+      } finally {
+        button.disabled = false; button.textContent = "确认骨架，展开成稿";
+      }
+    }
+
     function addConfirmButton(requirement) {
       const node = appendMessage("参数已经齐全。确认后开始执行统计分析。", "assistant");
       const button = document.createElement("button");
@@ -257,12 +490,14 @@
       node.appendChild(button);
     }
     async function uploadFile(file) {
+      try { requireSession(); }
+      catch (error) { appendMessage(error.message, "assistant", "warning"); return; }
       const body = new FormData();
       body.append("session_id", sessionId);
       body.append("file", file);
       $("resultStatus").textContent = "正在读取";
       try {
-        const response = await fetch("/api/upload", { method: "POST", body });
+        const response = await fetch("/api/upload", { method: "POST", headers: authHeaders(), body });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "上传失败");
         fileId = data.file_id;
@@ -276,6 +511,7 @@
       }
     }
     async function planAnalysis(requirement) {
+      requireSession();
       if (!fileId) {
         appendMessage("请先上传 Excel 或 CSV 文件。", "assistant", "warning");
         return;
@@ -283,7 +519,7 @@
       appendMessage(requirement, "user");
       $("resultStatus").textContent = "理解需求";
       const response = await fetch("/api/plan", {
-        method: "POST", headers: {"Content-Type": "application/json"},
+        method: "POST", headers: authHeaders({"Content-Type": "application/json"}),
         body: JSON.stringify({session_id: sessionId, file_id: fileId, requirement})
       });
       const data = await response.json();
@@ -307,19 +543,16 @@
       $("resultStatus").textContent = "计算中";
       try {
         const response = await fetch("/api/execute", {
-          method: "POST", headers: {"Content-Type": "application/json"},
+          method: "POST", headers: authHeaders({"Content-Type": "application/json"}),
           body: JSON.stringify({session_id: sessionId, file_id: fileId, requirement})
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "分析失败");
-        updateQuality(data.report);
-        renderResults(data.results);
-        $("resultStatus").textContent = data.status === "completed" ? "已完成" : data.status;
-        if (data.download_url) {
-          $("downloadLink").href = data.download_url;
-          $("downloadLink").classList.add("visible");
-        }
+        rememberAnalysis(data.job_id, requirement, data);
         appendMessage(data.message || "分析已完成。", "assistant");
+        if (data.reused) {
+          appendMessage("这次请求和之前完全一致，直接返回了原任务的结果，没有重新计算。", "assistant");
+        }
       } catch (error) {
         button.disabled = false;
         button.textContent = "重试执行";
@@ -327,6 +560,48 @@
         appendMessage(error.message, "assistant", "error");
       }
     }
+    loadEmployees();
+    $("employeeList").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-employee]");
+      if (!button || button.disabled) return;
+      if (sessionId) {
+        appendMessage("当前会话已经开始，切换虚拟员工需要新建会话。", "assistant", "warning");
+        return;
+      }
+      document.querySelectorAll("[data-employee]").forEach(node => node.classList.remove("active"));
+      button.classList.add("active");
+      applyEmployee(employees.find(item => item.employee_id === button.dataset.employee));
+    });
+    $("historyItems").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-job]");
+      if (button) openHistoryItem(button.dataset.job);
+    });
+    $("confirmSkeleton").addEventListener("click", requestDraft);
+    $("connectButton").addEventListener("click", connect);
+    $("tokenInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") connect();
+    });
+    // 报告下载也要带令牌，所以用 fetch 取回后再触发浏览器下载。
+    $("downloadLink").addEventListener("click", async (event) => {
+      event.preventDefault();
+      if (!downloadUrl) return;
+      try {
+        const response = await fetch(downloadUrl, { headers: authHeaders() });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "报告下载失败");
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = "数据分析报告.docx";
+        anchor.click();
+        URL.revokeObjectURL(objectUrl);
+      } catch (error) {
+        appendMessage(error.message, "assistant", "error");
+      }
+    });
     $("fileInput").addEventListener("change", (event) => {
       const file = event.target.files[0];
       if (file) uploadFile(file);
@@ -337,8 +612,11 @@
       if (!requirement) return;
       input.value = "";
       currentRequirement = requirement;
-      try { await planAnalysis(requirement); }
-      catch (error) { appendMessage(error.message, "assistant", "error"); }
+      try {
+        // 分派按当前员工走：文档型员工先出骨架，分析型员工先解析需求。
+        if (isWritingEmployee()) await requestSkeleton(requirement);
+        else await planAnalysis(requirement);
+      } catch (error) { appendMessage(error.message, "assistant", "error"); }
     });
     document.querySelectorAll("[data-prompt]").forEach((button) => {
       button.addEventListener("click", () => {

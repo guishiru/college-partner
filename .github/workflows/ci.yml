@@ -1,0 +1,129 @@
+name: CI
+
+# 每次 push 和 PR 都在一台干净的机器上重跑全部测试。
+# 「我本地能跑」在这里不成立：依赖漏写、安装步骤没记下来，第一次就会红。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  tests:
+    name: 单元测试与黄金基线
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-sem.txt
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: 安装 semopy（CFA / SEM）
+        run: |
+          pip install "setuptools<60" wheel
+          pip install --no-build-isolation -r requirements-sem.txt
+
+      - name: 确认 11 个统计方法的依赖都在
+        run: |
+          python - <<'PY'
+          import importlib.util
+          missing = [
+              name for name in ("pandas", "numpy", "scipy", "statsmodels",
+                                "factor_analyzer", "semopy", "docx", "flask")
+              if not importlib.util.find_spec(name)
+          ]
+          assert not missing, f"缺少依赖：{missing}"
+          print("依赖齐全")
+          PY
+
+      # 本地开发者装不上 semopy 时，基线测试会跳过并说明原因，这是合理的。
+      # 但 CI 是唯一能保证「每个统计方法都有基线」的地方，所以这里不允许有待补项。
+      - name: 不允许任何统计方法缺少黄金基线
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "tests")
+          from golden.cases import CASES, PENDING, baseline_path
+          assert not PENDING, f"CI 中不接受待补基线：{PENDING}"
+          missing = [m for m in sorted(CASES) if not baseline_path(m).is_file()]
+          assert not missing, f"以下方法没有基线：{missing}"
+          print(f"{len(CASES)} 个方法全部有基线")
+          PY
+
+      - name: 跑测试
+        run: >
+          python -m pytest tests -q
+          --ignore=tests/test_end_to_end.py
+          --junitxml=pytest-report.xml
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          retention-days: 14
+
+  e2e:
+    name: 浏览器端到端与页面截图
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-sem.txt
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest playwright
+
+      - name: 安装 semopy（CFA / SEM）
+        run: |
+          pip install "setuptools<60" wheel
+          pip install --no-build-isolation -r requirements-sem.txt
+
+      - name: 安装 Chromium
+        run: python -m playwright install --with-deps chromium
+
+      # 端到端要跑写作流程，需要假模型的预置回复；真调 API 在 CI 里不可行。
+      - name: 准备假模型回复
+        run: python tests/make_fake_replies.py
+
+      - name: 走一遍完整闭环并截图
+        run: python -m pytest tests/test_end_to_end.py -q
+
+      # if: always() —— 失败时的截图才是最有用的那张。
+      - name: 上传页面截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: tests/_screenshots/
+          retention-days: 14
+          if-no-files-found: warn

@@ -42,3 +42,9 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+# 端到端测试产生的页面截图，由 CI 作为构建产物上传
+tests/_screenshots/
+
+# 端到端测试的预置模型回复
+tests/_fake_replies.json

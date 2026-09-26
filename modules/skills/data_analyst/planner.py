@@ -7,6 +7,7 @@ from typing import Any
 
 from .questioner import next_question
 from .registry import METHOD_SKILLS, detect_methods
+from .semantic import Interpretation, interpret
 
 
 ROLE_LABELS = {
@@ -23,20 +24,28 @@ def build_analysis_plan(
     text: str,
     columns: list[str],
     column_types: dict[str, str] | None = None,
+    client=None,
 ) -> dict[str, Any]:
-    """Turn a user request into validated method/parameter candidates."""
+    """Turn a user request into validated method/parameter candidates.
+
+    关键词表先跑。命中的时候它比模型又快又准又免费，结果还稳定，没有理由为
+    「做信度分析」这种毫无歧义的说法去调一次模型。只有兜不住的时候——
+    「这几道题一不一致」这类人话——才让模型来翻译。
+    """
 
     columns = [str(column) for column in columns]
     column_types = column_types or {}
     methods = detect_methods(text)
+    interpretation = None
+
+    if not methods and client is not None:
+        interpretation = interpret(text, columns, client)
+        if interpretation.should_act:
+            methods = [interpretation.method]
+
     if not methods:
-        missing = [
-            {
-                "field": "method",
-                "question": "请确认要做哪一种统计分析，例如信度、效度、相关、回归、中介、调节、EFA、CFA 或 SEM。",
-            }
-        ]
-        return _plan([], missing, columns)
+        return _plan([], _method_question(interpretation), columns,
+                     interpretation=interpretation)
 
     items = []
     missing: list[dict[str, Any]] = []
@@ -54,16 +63,48 @@ def build_analysis_plan(
         )
         missing.extend(_missing(method, params))
 
-    return _plan(items, missing, columns)
+    return _plan(items, missing, columns, interpretation=interpretation)
 
 
-def _plan(items, missing, columns):
-    return {
+def _plan(items, missing, columns, *, interpretation=None):
+    plan = {
         "methods": items,
         "missing": missing,
         "can_execute": bool(items) and not missing,
         "question": next_question(missing, columns),
     }
+    # 识别来源要让用户看得见：关键词命中和模型猜的，可信程度不一样。
+    plan["recognition"] = {
+        "source": "model" if (interpretation and interpretation.method) else "keyword",
+        "confidence": interpretation.confidence if interpretation else 1.0,
+        "evidence": interpretation.evidence if interpretation else "",
+        "reason": interpretation.reason if interpretation else "",
+        "rejected": interpretation.rejected if interpretation else "",
+        "input_tokens": interpretation.input_tokens if interpretation else 0,
+        "output_tokens": interpretation.output_tokens if interpretation else 0,
+    }
+    return plan
+
+
+def _method_question(interpretation) -> list[dict[str, Any]]:
+    """识别不出方法时问什么。
+
+    模型有个中等把握的猜测时，带着猜测问——「你是想做信度分析吗」比
+    「请确认要做哪一种统计分析」省用户一轮。把握太低就不要猜，猜错更烦人。
+    """
+
+    if interpretation is not None and interpretation.should_suggest:
+        spec = METHOD_SKILLS[interpretation.method]
+        return [{
+            "field": "method",
+            "suggested_method": interpretation.method,
+            "question": f"你是想做{spec['label']}吗？确认后我就开始。"
+                        f"如果不是，请说明要做哪一种分析。",
+        }]
+    return [{
+        "field": "method",
+        "question": "请确认要做哪一种统计分析，例如信度、效度、相关、回归、中介、调节、EFA、CFA 或 SEM。",
+    }]
 
 
 def _extract_params(method, text, columns, explicit_columns, column_types):

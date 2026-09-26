@@ -19,8 +19,11 @@ parallel_mediation_analysis.py
 
 import numpy as np
 import pandas as pd
+
 import warnings
 from scipy import stats
+
+from ._numeric import NA, numeric_display, significance_star
 
 warnings.filterwarnings('ignore')
 
@@ -80,7 +83,7 @@ def _reg_table(reg: dict, var_names: list, y_arr: np.ndarray, X_arrs: list) -> p
     for i, name in enumerate(names):
         p_val = reg['p'][i]
         if i == 0:
-            beta = '—'
+            beta = NA          # 常数项没有标准化系数；破折号会把整列拖成文本
         else:
             sd_x = np.std(X_arrs[i - 1], ddof=1)
             beta = round(reg['coef'][i] * sd_x / sd_y, 4)
@@ -90,7 +93,9 @@ def _reg_table(reg: dict, var_names: list, y_arr: np.ndarray, X_arrs: list) -> p
             'Beta（标准化）': beta,
             'SE': round(reg['se'][i], 4),
             't值': round(reg['t'][i], 4),
-            'P值': f"{round(p_val, 4)}{_sig_star(p_val)}",
+            # p 值保留完整精度，星号是标记，单独成列。
+            'P值': float(p_val),
+            '显著性': _sig_star(p_val),
         })
     df = pd.DataFrame(rows)
     df.attrs.update({
@@ -213,13 +218,16 @@ def parallel_mediation(data: pd.DataFrame,
         indirect_results.append({
             'mediator': mediators[j],
             'a': round(a_list[j], 4),
-            'a_p': f"{round(a_p_list[j], 4)}{_sig_star(a_p_list[j])}",
+            'a_p': float(a_p_list[j]),
+            'a_star': _sig_star(a_p_list[j]),
             'b': round(b_list[j], 4),
-            'b_p': f"{round(b_p_list[j], 4)}{_sig_star(b_p_list[j])}",
+            'b_p': float(b_p_list[j]),
+            'b_star': _sig_star(b_p_list[j]),
             'ab': round(ab_pt, 4),
             'boot_se': round(boot_se, 4),
-            'z_val': round(z_val, 4) if not np.isnan(z_val) else '—',
-            'p_val': f"{round(p_val, 4)}{star_p}" if not np.isnan(p_val) else '—',
+            'z_val': float(z_val),
+            'p_val': float(p_val),
+            'p_star': star_p if not np.isnan(p_val) else '',
             'ci_lo': round(ci_lo, 4),
             'ci_hi': round(ci_hi, 4),
             'ci_str': f"[{round(ci_lo, 4)}, {round(ci_hi, 4)}]",
@@ -239,15 +247,21 @@ def parallel_mediation(data: pd.DataFrame,
             'c总效应': round(c, 4),
             'a': r['a'],
             'a(p值)': r['a_p'],
+            'a显著性': r['a_star'],
             'b': r['b'],
             'b(p值)': r['b_p'],
+            'b显著性': r['b_star'],
             'a*b中介效应': r['ab'],
             'a*b (Boot SE)': r['boot_se'],
             'a*b (Z值)': r['z_val'],
             'a*b (P值)': r['p_val'],
+            'a*b显著性': r['p_star'],
+            'a*b (CI下限)': r['ci_lo'],
+            'a*b (CI上限)': r['ci_hi'],
             f'a*b ({ci_pct}%BootCI)': r['ci_str'],
             "c'直接效应": round(c_prime, 4),
-            "c'(p值)": f"{round(c_prime_p, 4)}{_sig_star(c_prime_p)}",
+            "c'(p值)": float(c_prime_p),
+            "c'显著性": _sig_star(c_prime_p),
             '检验结论': conclusion,
         })
 

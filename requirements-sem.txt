@@ -1,0 +1,11 @@
+# 验证性因子分析（CFA）与结构方程模型（SEM）的依赖。
+#
+# semopy 2.3.11 的 setup.py 与新版 setuptools 不兼容，直接 pip install 会报
+# AttributeError: install_layout。必须先降 setuptools 并关掉构建隔离：
+#
+#   pip install "setuptools<60" wheel
+#   pip install --no-build-isolation -r requirements-sem.txt
+#
+# 单独放一个文件，是为了让 `pip install -r requirements.txt` 始终一条命令成功。
+# 不装它时，engine 会对 cfa 和 sem 抛出 AnalysisDependencyError，其余方法不受影响。
+semopy>=2.3.8

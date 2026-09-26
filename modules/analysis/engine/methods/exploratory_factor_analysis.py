@@ -6,6 +6,9 @@ PCA extraction + Varimax rotation
 import numpy as np
 import pandas as pd
 
+from ._numeric import NA, numeric_display, significance_star
+
+
 
 def _varimax(loadings, max_iter=1000, tol=1e-8, kaiser_normalize=True):
     """Varimax rotation with optional Kaiser normalization (SPSS-style)."""
@@ -173,9 +176,11 @@ def exploratory_factor_analysis(df, items=None, n_factors=None):
             '特征根': round(float(eigenvalue), 3),
             '方差解释率(%)': round(float(variance_pct_all[i - 1]), 3),
             '累积方差解释率(%)': round(float(cumulative_pct_all[i - 1]), 3),
-            '旋转后特征根': '',
-            '旋转后方差解释率(%)': '',
-            '旋转后累积方差解释率(%)': '',
+            # 未保留的成分没有旋转后结果。存 NaN 而不是空串：空串会把整列
+            # 拖成文本，连保留成分的真数值也一起变成字符串。
+            '旋转后特征根': NA,
+            '旋转后方差解释率(%)': NA,
+            '旋转后累积方差解释率(%)': NA,
         }
         if i <= n_factors:
             row['旋转后特征根'] = round(float(np.sum(rotated[:, i - 1] ** 2)), 3)
@@ -315,6 +320,7 @@ def exploratory_factor_analysis(df, items=None, n_factors=None):
             },
             'total_variance_display_table': {
                 'title': '总方差解释表（展示版）',
+                **numeric_display(na_text='-'),
                 'merge_cells': [],
                 'orientation': 'wide',
                 'notes': ['按截图样式整理，未保留成分的旋转后列留空。']

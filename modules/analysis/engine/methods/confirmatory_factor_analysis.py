@@ -19,8 +19,11 @@ confirmatory_factor_analysis.py
 
 import numpy as np
 import pandas as pd
+
 import warnings
 from scipy import stats
+
+from ._numeric import numeric_display, to_numeric, significance_star
 
 warnings.filterwarnings('ignore')
 
@@ -149,15 +152,8 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
     n_f = len(factor_list)
 
     def _sig_star(p):
-        if p is None or (isinstance(p, float) and np.isnan(p)):
-            return ''
-        if p < 0.001:
-            return '***'
-        if p < 0.01:
-            return '**'
-        if p < 0.05:
-            return '*'
-        return ''
+        return significance_star(p)
+
 
     def _fmt_p(p):
         if p is None or (isinstance(p, float) and np.isnan(p)):
@@ -165,6 +161,13 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
         if p < 0.001:
             return '0.000***'
         return f"{p:.3f}{_sig_star(p)}"
+
+    # semopy 对固定的参考题项返回 '-'，一个占位字符串会把整列拖成文本。
+    # 改成 NaN，渲染成 '-' 交给展示层。
+    load_table = to_numeric(load_table, ['非标准化载荷', '标准化载荷', '标准误', 'Z值', 'P值'])
+    load_table['显著性'] = load_table['P值'].map(lambda v: _sig_star(v) if v == v else '')
+    load_table = load_table[['因子', '变量', '非标准化载荷', '标准化载荷',
+                             '标准误', 'Z值', 'P值', '显著性']]
 
     # corr_table 按用户截图口径重算：
     # 对角线展示 √AVE；非对角线展示各因子合成得分之间的 Pearson 相关（附 p 值显著性）。
@@ -177,20 +180,64 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
         else:
             factor_score_df[f] = np.nan
 
+    # 先把系数和 p 值算出来并留成数值，展示矩阵由它们派生。
+    # 只留 "0.537(0.000***)" 这种字符串的话，精度丢到三位，p 值还会被压成 0.000，
+    # 报告模块无论怎么解析都拿不回真值。
+    factor_correlations: dict[tuple[str, str], tuple[float, float]] = {}
+    for i, fi in enumerate(factor_list):
+        for fj in factor_list[i + 1:]:
+            pair_df = factor_score_df[[fi, fj]].dropna()
+            if len(pair_df) >= 3:
+                r_val, p_val = stats.pearsonr(pair_df[fi], pair_df[fj])
+                factor_correlations[(fi, fj)] = (float(r_val), float(p_val), int(len(pair_df)))
+
+    def _factor_pair(fi, fj):
+        return factor_correlations.get((fi, fj)) or factor_correlations.get((fj, fi))
+
+    display_of = dict(zip(factor_list, factor_display))
+    sqrt_ave = {
+        factor: float(np.sqrt(eval_rows[index]['AVE']))
+        for index, factor in enumerate(factor_list)
+    }
+
+    # 结构化结果：每对因子一行，系数与 p 值保留完整精度。
+    factor_correlation_table = pd.DataFrame(
+        [
+            {
+                '因子1': display_of[fi],
+                '因子2': display_of[fj],
+                '相关系数': values[0],
+                'P值': values[1],
+                '显著性标记': _sig_star(values[1]),
+                '样本数': values[2],
+            }
+            for (fi, fj), values in factor_correlations.items()
+        ],
+        columns=['因子1', '因子2', '相关系数', 'P值', '显著性标记', '样本数'],
+    )
+
+    # 区分效度用的 √AVE 也单独给出数值，不要让它只以展示矩阵对角线的形式存在。
+    sqrt_ave_table = pd.DataFrame(
+        [
+            {'因子': display_of[factor], '√AVE': value}
+            for factor, value in sqrt_ave.items()
+        ],
+        columns=['因子', '√AVE'],
+    )
+
     corr_table_rows = []
     for i, fi in enumerate(factor_list):
         row_data = {'因子': factor_display[i]}
         for j, fj in enumerate(factor_list):
             display_col = factor_display[j]
             if i == j:
-                row_data[display_col] = round(float(np.sqrt(eval_rows[i]['AVE'])), 3)
+                row_data[display_col] = round(sqrt_ave[fi], 3)
             else:
-                pair_df = factor_score_df[[fi, fj]].dropna()
-                if len(pair_df) < 3:
+                values = _factor_pair(fi, fj)
+                if values is None:
                     row_data[display_col] = '-'
                 else:
-                    r_val, p_val = stats.pearsonr(pair_df[fi], pair_df[fj])
-                    row_data[display_col] = f"{r_val:.3f}({_fmt_p(p_val)})"
+                    row_data[display_col] = f"{values[0]:.3f}({_fmt_p(values[1])})"
         corr_table_rows.append(row_data)
 
     corr_table = pd.DataFrame(corr_table_rows)
@@ -261,7 +308,22 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
             'Std. Err': '标准误',
             'z-value': 'Z值',
             'p-value': 'P值',
-        })[['变量1', '变量2', '非标准估计系数', '标准误', 'Z值', 'P值', '标准估计系数']].reset_index(drop=True)
+        })[['变量1', '变量2', '非标准估计系数', '标准误', 'Z值', 'P值', '标准估计系数']]
+
+        # semopy 以无序对的形式返回因子间协方差，行顺序和 A↔B / B↔A 的朝向
+        # 都随 PYTHONHASHSEED 变化。协方差本身对称，统计量完全相同，但同一份
+        # 数据每次跑出来的表长得不一样，报告也就不可复现。这里固定成
+        # 「字典序小的在前」并按变量名排序，只改呈现，不改任何数值。
+        pair = cov_table[['变量1', '变量2']].to_numpy()
+        cov_table['变量1'] = [min(left, right) for left, right in pair]
+        cov_table['变量2'] = [max(left, right) for left, right in pair]
+        cov_table = (
+            cov_table.sort_values(['变量1', '变量2'], kind='mergesort')
+            .reset_index(drop=True)
+        )
+        cov_table = to_numeric(
+            cov_table, ['非标准估计系数', '标准误', 'Z值', 'P值', '标准估计系数'])
+        cov_table['显著性'] = cov_table['P值'].map(lambda v: _sig_star(v) if v == v else '')
     else:
         cov_table = pd.DataFrame()
 
@@ -280,12 +342,16 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
         'item_count': int(len(all_items)),
         'factors': factors,
         'factor_names': factor_names or {},
-        'table_keys': ['factor_summary_table', 'load_table', 'eval_table', 'corr_table', 'fit_table', 'cov_table']
+        'table_keys': ['factor_summary_table', 'load_table', 'eval_table',
+                       'factor_correlation_table', 'sqrt_ave_table', 'corr_table',
+                       'fit_table', 'cov_table']
     }
 
     tables = {
         'load_table': load_table,
         'eval_table': eval_table,
+        'factor_correlation_table': factor_correlation_table,
+        'sqrt_ave_table': sqrt_ave_table,
         'corr_table': corr_table,
         'fit_table': fit_table,
         'cov_table': cov_table,
@@ -296,6 +362,7 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
         'tables': {
             'load_table': {
                 'title': '因子载荷系数表',
+                **numeric_display(na_text='-', combine={'P值': '显著性'}),
                 'merge_cells': [
                     {'field': '因子', 'merge_consecutive_same_values': True}
                 ],
@@ -307,6 +374,18 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
                 'merge_cells': [],
                 'orientation': 'wide',
                 'notes': ['普通宽表，无需合并单元格。']
+            },
+            'factor_correlation_table': {
+                'title': '因子相关结果',
+                'merge_cells': [],
+                'orientation': 'wide',
+                'notes': ['结构化结果表，系数和 P 值为原始数值，供报告和二次计算使用。']
+            },
+            'sqrt_ave_table': {
+                'title': '各因子 √AVE',
+                'merge_cells': [],
+                'orientation': 'wide',
+                'notes': ['区分效度比较用的 √AVE 原始数值。']
             },
             'corr_table': {
                 'title': '因子相关矩阵（对角线 = √AVE）',
@@ -322,6 +401,7 @@ def confirmatory_factor_analysis(data: pd.DataFrame,
             },
             'cov_table': {
                 'title': '因子协方差表',
+                **numeric_display(na_text='-', combine={'P值': '显著性'}),
                 'merge_cells': [],
                 'orientation': 'wide',
                 'notes': ['如为空表，前端可不展示该表。']

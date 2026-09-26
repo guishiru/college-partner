@@ -115,6 +115,14 @@ class AnalysisEngine:
             raw = self._invoke(spec, function, data.copy(), normalized)
         except AnalysisEngineError:
             raise
+        except ImportError as exc:
+            # Some methods import their heavy dependency at module level and
+            # some inside the function. Either way a missing package is a
+            # dependency problem, not a data problem, and callers need to be
+            # able to tell the two apart.
+            raise AnalysisDependencyError(
+                f"{spec.label}依赖未安装或无法加载：{exc}"
+            ) from exc
         except Exception as exc:
             raise AnalysisEngineError(f"{spec.label}执行失败：{exc}") from exc
 
@@ -155,6 +163,13 @@ class AnalysisEngine:
             self._validate_columns(data, cols)
             if spec.family == "numeric_cols":
                 self._require_numeric(data, cols, spec.label)
+                self._require_analyzable(data, cols, spec.label)
+            else:
+                # 描述统计和频数不需要变异（常数列的均值是有意义的），
+                # 但全空列和成对剔除后样本归零同样必须拦住。
+                self._require_analyzable(
+                    data, cols, spec.label, needs_variance=False
+                )
             return {"cols": cols, **self._optional(params, "n_factors")}
 
         if spec.family == "regression":
@@ -164,6 +179,7 @@ class AnalysisEngine:
                 raise AnalysisInputError("因变量不能同时作为自变量。")
             self._validate_columns(data, [y, *x_cols])
             self._require_numeric(data, [y, *x_cols], spec.label)
+            self._require_analyzable(data, [y, *x_cols], spec.label)
             return {
                 "y": y,
                 "x_cols": x_cols,
@@ -185,6 +201,7 @@ class AnalysisEngine:
             self._validate_distinct_roles(cols, spec.label)
             self._validate_columns(data, cols)
             self._require_numeric(data, cols, spec.label)
+            self._require_analyzable(data, cols, spec.label)
             return {"x": x, "y": y, "m": m_list[0], "controls": controls}
 
         if spec.family == "parallel_mediation":
@@ -196,6 +213,7 @@ class AnalysisEngine:
             self._validate_distinct_roles(cols, spec.label)
             self._validate_columns(data, cols)
             self._require_numeric(data, cols, spec.label)
+            self._require_analyzable(data, cols, spec.label)
             return {
                 "x": x,
                 "y": y,
@@ -221,6 +239,7 @@ class AnalysisEngine:
                 raise AnalysisInputError(f"{spec.label}中题项不能重复归属于多个因子。")
             self._validate_columns(data, all_items)
             self._require_numeric(data, all_items, spec.label)
+            self._require_analyzable(data, all_items, spec.label)
             if spec.family == "factors":
                 return {
                     "factors": factors,
@@ -374,6 +393,60 @@ class AnalysisEngine:
             )
         if np.isinf(data[columns].to_numpy(dtype=float, copy=False)).any():
             raise AnalysisInputError(f"{label}的变量中存在无穷值。")
+
+    @staticmethod
+    def _require_analyzable(
+        data: pd.DataFrame,
+        columns: list[str],
+        label: str,
+        *,
+        needs_variance: bool = True,
+    ) -> None:
+        """成对剔除之后还剩多少样本，够不够算出有意义的结果。
+
+        这里拦的都是「能算出一个数、但那个数没有意义」的情况——它们不会抛异常，
+        只会安静地返回垃圾：一个全空列会把同批变量的样本量一起清零，描述统计
+        于是报告样本量 0；常数列参与信度会算出 -0.163 的负 α；n=2 的信度是
+        完美的 1.0。这些都比报错危险，因为用户会照抄进论文。
+        """
+
+        if not columns:
+            return
+
+        empty = [c for c in columns if data[c].dropna().empty]
+        if empty:
+            raise AnalysisInputError(
+                f"{label}无法进行：变量 {empty} 没有任何有效值。"
+                f"分析采用成对剔除，纳入全空变量会把其余变量的样本量一并清零。"
+                f"请先移除这些变量。"
+            )
+
+        effective = int(len(data[columns].dropna()))
+        if effective == 0:
+            raise AnalysisInputError(
+                f"{label}无法进行：{columns} 没有一条同时在所有变量上都有值的记录，"
+                f"成对剔除后有效样本量为 0。请检查缺失情况。"
+            )
+        if effective < 3:
+            raise AnalysisInputError(
+                f"{label}无法进行：有效样本量仅 {effective}，无法估计统计量。"
+            )
+
+        if not needs_variance:
+            return
+
+        constant = [c for c in columns if data[c].dropna().nunique() <= 1]
+        if constant:
+            raise AnalysisInputError(
+                f"{label}无法进行：变量 {constant} 的所有取值相同（方差为 0），"
+                f"无法计算相关、载荷或信度。请先移除这些变量。"
+            )
+
+        if len(columns) > 1 and effective <= len(columns):
+            raise AnalysisInputError(
+                f"{label}无法进行：有效样本量 {effective} 不大于变量个数 "
+                f"{len(columns)}，协方差矩阵奇异，结果没有意义。"
+            )
 
     @staticmethod
     def _validate_distinct_roles(columns: list[str], label: str) -> None:
