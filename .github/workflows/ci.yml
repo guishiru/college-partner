@@ -14,15 +14,24 @@ concurrency:
 env:
   PYTHON_VERSION: "3.11"
 
+# 运行环境钉死，不用 ubuntu-latest。
+#
+# 黄金基线盯的是统计结果的具体数值，而数值依赖底层 BLAS/LAPACK 的版本。
+# ubuntu-latest 会在某天自动换代（下一次是 2026-10-19 换到 Ubuntu 26），
+# 那天基线会毫无预兆地变红，而红的原因跟当次改动毫无关系——这是最难排查的
+# 一类失败。钉死之后，升级操作系统变成一次能读 diff、能回滚的提交。
+#
+# 注意：runs-on 不支持 env 上下文，所以只能两处各写一遍，改的时候别漏。
+
 jobs:
   tests:
     name: 单元测试与黄金基线
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -76,7 +85,7 @@ jobs:
 
       - name: 上传测试报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-report
           path: pytest-report.xml
@@ -84,12 +93,12 @@ jobs:
 
   e2e:
     name: 浏览器端到端与页面截图
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -121,7 +130,7 @@ jobs:
       # if: always() —— 失败时的截图才是最有用的那张。
       - name: 上传页面截图
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: tests/_screenshots/
